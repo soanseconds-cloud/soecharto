@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chart Quiz Reader — Bundled Deck</title>
+  <style>
+    :root {
+      --bg: #07090d;
+      --panel: #0e131b;
+      --border: #1e2736;
+      --text: #e6edf7;
+      --muted: #8a99b0;
+      --sn: #fb7185;
+      --iv: #fbbf24;
+      --sw: #38bdf8;
+      --ok: #22c55e;
+      --bad: #ef4444;
+      --accent: #6366f1;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+    }
+
+    .wrap {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    button {
+      border: 1px solid var(--border);
+      background: #131a24;
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    button:hover { border-color: #33435c; }
+
+    .tool-btn.active[data-type="SN"] { border-color: var(--sn); box-shadow: 0 0 0 1px var(--sn); }
+    .tool-btn.active[data-type="IV"] { border-color: var(--iv); box-shadow: 0 0 0 1px var(--iv); }
+    .tool-btn.active[data-type="SW"] { border-color: var(--sw); box-shadow: 0 0 0 1px var(--sw); }
+
+    .primary-btn {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot.SN { background: var(--sn); }
+    .dot.IV { background: var(--iv); }
+    .dot.SW { background: var(--sw); }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .muted { color: var(--muted); }
+    .ok { color: var(--ok); font-weight: 700; }
+    .bad { color: var(--bad); font-weight: 700; }
+
+    .stage {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 340px;
+    }
+
+    canvas {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      cursor: crosshair;
+      touch-action: none;
+      border-radius: 6px;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    @media (max-width: 720px) {
+      .status-grid { grid-template-columns: 1fr; }
+    }
+
+    .status-box {
+      background: #090d14;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 12px;
+      display: grid;
+      gap: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="row">
+        <button id="randomChartBtn" type="button" class="primary-btn">Random Chart</button>
+        <button id="noRepeatToggle" type="button">Avoid Repeats: ON</button>
+        <span id="deckStatus" class="mono muted">Checking ./charts.js...</span>
+      </div>
+      <div class="row mono" style="justify-content: space-between;">
+        <span id="activeFileName" class="muted">File: none</span>
+        <span id="hoverCoords" class="muted">X: --- | Y: ---</span>
+      </div>
+      <div class="row mono">
+        <span id="keySummary" class="muted">Answer key: waiting for chart</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <button type="button" class="tool-btn active" data-type="SN">
+          <span class="dot SN"></span> SNR Line
+        </button>
+        <button type="button" class="tool-btn" data-type="IV">
+          <span class="dot IV"></span> Invalidation Line
+        </button>
+        <button type="button" class="tool-btn" data-type="SW">
+          <span class="dot SW"></span> Swing Point
+        </button>
+
+        <label class="row mono" style="margin-left: auto;">
+          <span class="muted">Tol:</span>
+          <input id="tolRange" type="range" min="1" max="12" step="0.5" value="4" />
+          <span id="tolLabel">4.0%</span>
+        </label>
+
+        <button id="toggleKeyBtn" type="button">Show Answer Key</button>
+        <button id="clearGuessBtn" type="button">Clear Guesses</button>
+        <button id="gradeBtn" type="button" class="primary-btn">Grade Attempt</button>
+      </div>
+
+      <div class="status-grid mono">
+        <div class="status-box" id="res-SN">
+          <div><strong style="color: var(--sn);">SNR Line (Y)</strong></div>
+          <div class="muted">Key: -- | Guess: --</div>
+        </div>
+        <div class="status-box" id="res-IV">
+          <div><strong style="color: var(--iv);">Invalidation Line (Y)</strong></div>
+          <div class="muted">Key: -- | Guess: --</div>
+        </div>
+        <div class="status-box" id="res-SW">
+          <div><strong style="color: var(--sw);">Swing Point (X, Y)</strong></div>
+          <div class="muted">Key: -- | Guess: --</div>
+        </div>
+      </div>
+
+      <div id="scoreBanner" class="mono muted">Select a tool, tap or drag on the chart to place your markers, then click Grade Attempt.</div>
+    </div>
+
+    <div class="stage">
+      <canvas id="readerCanvas" width="900" height="480"></canvas>
+    </div>
+  </div>
+
+  <script src="./charts.js"></script>
+  <script>
+    const randomChartBtn = document.getElementById("randomChartBtn");
+    const noRepeatToggle = document.getElementById("noRepeatToggle");
+    const deckStatus = document.getElementById("deckStatus");
+    const activeFileName = document.getElementById("activeFileName");
+    const keySummary = document.getElementById("keySummary");
+    const hoverCoords = document.getElementById("hoverCoords");
+    const tolRange = document.getElementById("tolRange");
+    const tolLabel = document.getElementById("tolLabel");
+    const toggleKeyBtn = document.getElementById("toggleKeyBtn");
+    const clearGuessBtn = document.getElementById("clearGuessBtn");
+    const gradeBtn = document.getElementById("gradeBtn");
+    const scoreBanner = document.getElementById("scoreBanner");
+    const canvas = document.getElementById("readerCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const COLORS = {
+      SN: "#fb7185",
+      IV: "#fbbf24",
+      SW: "#38bdf8"
+    };
+
+    const chartList = Array.isArray(window.CHARTS)
+      ? window.CHARTS.filter(name => typeof name === "string" && name.trim().length > 0)
+      : [];
+
+    let avoidRepeats = true;
+    let remainingPool = [...chartList];
+    let activeType = "SN";
+    let currentImg = null;
+    let showKey = false;
+    let hoverNorm = null;
+    let isPointerDown = false;
+    let answerKey = { SN: null, IV: null, SW: null };
+    let guesses = { SN: null, IV: null, SW: null };
+
+    function pad3(normVal) {
+      const clamped = Math.max(0, Math.min(1, normVal));
+      return String(Math.round(clamped * 1000)).padStart(3, "0");
+    }
+
+    function parseFilenameKey(rawName) {
+      const clean = String(rawName || "").trim();
+      const snMatch = clean.match(/SN-(\d{1,4})-(\d{1,4})/i);
+      const ivMatch = clean.match(/IV-(\d{1,4})-(\d{1,4})/i);
+      const swMatch = clean.match(/SW-(\d{1,4})-(\d{1,4})/i);
+
+      const parsed = {
+        SN: snMatch ? { y: Math.min(1, Number(snMatch[2]) / 1000) } : null,
+        IV: ivMatch ? { y: Math.min(1, Number(ivMatch[2]) / 1000) } : null,
+        SW: swMatch
+          ? {
+              x: Math.min(1, Number(swMatch[1]) / 1000),
+              y: Math.min(1, Number(swMatch[2]) / 1000)
+            }
+          : null
+      };
+
+      const foundCount = ["SN", "IV", "SW"].filter(k => parsed[k] !== null).length;
+      if (foundCount === 0) {
+        keySummary.innerHTML = `<span class="bad">Answer key: no SN / IV / SW coordinates found in filename.</span>`;
+        answerKey = { SN: null, IV: null, SW: null };
+      } else {
+        answerKey = parsed;
+        const parts = [];
+        if (parsed.SN) parts.push(`SN Y=${pad3(parsed.SN.y)}`);
+        if (parsed.IV) parts.push(`IV Y=${pad3(parsed.IV.y)}`);
+        if (parsed.SW) parts.push(`SW (${pad3(parsed.SW.x)}, ${pad3(parsed.SW.y)})`);
+        keySummary.innerHTML = `<span class="ok">Key (${foundCount}/3):</span> ${parts.join(" · ")}`;
+      }
+      updateStatusCards(null);
+      draw();
+    }
+
+    function updateStatusCards(results) {
+      const snBox = document.getElementById("res-SN");
+      snBox.innerHTML = `
+        <div><strong style="color: var(--sn);">SNR Line (Y)</strong> ${results ? (results.SN ? '<span class="ok">PASS</span>' : '<span class="bad">MISS</span>') : ""}</div>
+        <div class="mono">Key: ${answerKey.SN ? pad3(answerKey.SN.y) : "--"} | Guess: ${guesses.SN ? pad3(guesses.SN.y) : "--"}</div>
+      `;
+
+      const ivBox = document.getElementById("res-IV");
+      ivBox.innerHTML = `
+        <div><strong style="color: var(--iv);">Invalidation Line (Y)</strong> ${results ? (results.IV ? '<span class="ok">PASS</span>' : '<span class="bad">MISS</span>') : ""}</div>
+        <div class="mono">Key: ${answerKey.IV ? pad3(answerKey.IV.y) : "--"} | Guess: ${guesses.IV ? pad3(guesses.IV.y) : "--"}</div>
+      `;
+
+      const swBox = document.getElementById("res-SW");
+      swBox.innerHTML = `
+        <div><strong style="color: var(--sw);">Swing Point (X, Y)</strong> ${results ? (results.SW ? '<span class="ok">PASS</span>' : '<span class="bad">MISS</span>') : ""}</div>
+        <div class="mono">Key: ${answerKey.SW ? `${pad3(answerKey.SW.x)},${pad3(answerKey.SW.y)}` : "--"} | Guess: ${guesses.SW ? `${pad3(guesses.SW.x)},${pad3(guesses.SW.y)}` : "--"}</div>
+      `;
+    }
+
+    function drawLine(yNorm, color, label, isKey) {
+      const py = yNorm * canvas.height;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = isKey ? 2 : 2.5;
+      ctx.setLineDash(isKey ? [8, 6] : []);
+
+      ctx.beginPath();
+      ctx.moveTo(0, py);
+      ctx.lineTo(canvas.width, py);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.font = "bold 12px monospace";
+      const tag = isKey ? `[KEY ${label} Y=${pad3(yNorm)}]` : `[GUESS ${label} Y=${pad3(yNorm)}]`;
+      ctx.fillText(tag, isKey ? Math.max(12, canvas.width - 185) : 12, Math.max(16, py - 6));
+      ctx.restore();
+    }
+
+    function drawPoint(pt, color, label, isKey) {
+      const px = pt.x * canvas.width;
+      const py = pt.y * canvas.height;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 2;
+      if (isKey) ctx.setLineDash([5, 4]);
+
+      ctx.beginPath();
+      ctx.arc(px, py, isKey ? 12 : 6, 0, Math.PI * 2);
+      if (isKey) ctx.stroke(); else ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(px - 16, py);
+      ctx.lineTo(px + 16, py);
+      ctx.moveTo(px, py - 16);
+      ctx.lineTo(px, py + 16);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.font = "bold 12px monospace";
+      const tag = isKey
+        ? `KEY ${label} (${pad3(pt.x)},${pad3(pt.y)})`
+        : `GUESS ${label} (${pad3(pt.x)},${pad3(pt.y)})`;
+      const tx = px + 14 > canvas.width - 150 ? px - 150 : px + 14;
+      const ty = py - 8 < 16 ? py + 18 : py - 8;
+      ctx.fillText(tag, tx, ty);
+      ctx.restore();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (currentImg) {
+        ctx.drawImage(currentImg, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = "#0b0f17";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#8a99b0";
+        ctx.font = "14px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(
+          chartList.length
+            ? "Loading chart image..."
+            : "No charts found in ./charts.js. Add PNGs to ./charts/ and generate ./charts.js.",
+          canvas.width / 2,
+          canvas.height / 2
+        );
+      }
+
+      if (showKey) {
+        if (answerKey.SN) drawLine(answerKey.SN.y, COLORS.SN, "SN", true);
+        if (answerKey.IV) drawLine(answerKey.IV.y, COLORS.IV, "IV", true);
+        if (answerKey.SW) drawPoint(answerKey.SW, COLORS.SW, "SW", true);
+      }
+
+      if (guesses.SN) drawLine(guesses.SN.y, COLORS.SN, "SN", false);
+      if (guesses.IV) drawLine(guesses.IV.y, COLORS.IV, "IV", false);
+      if (guesses.SW) drawPoint(guesses.SW, COLORS.SW, "SW", false);
+
+      if (hoverNorm && currentImg) {
+        if (activeType === "SN" || activeType === "IV") {
+          drawLine(hoverNorm.y, COLORS[activeType], activeType, false);
+        } else {
+          drawPoint(hoverNorm, COLORS.SW, "SW", false);
+        }
+      }
+    }
+
+    function refreshDeckStatus() {
+      if (!chartList.length) {
+        deckStatus.innerHTML = `<span class="bad">Deck: 0 charts (check ./charts.js)</span>`;
+        return;
+      }
+      const leftLabel = avoidRepeats ? ` · ${remainingPool.length}/${chartList.length} left in cycle` : "";
+      deckStatus.innerHTML = `<span class="ok">Deck: ${chartList.length} PNG(s)</span>${leftLabel}`;
+    }
+
+    function nextFilename() {
+      if (!chartList.length) return null;
+      if (!avoidRepeats) {
+        return chartList[Math.floor(Math.random() * chartList.length)];
+      }
+      if (!remainingPool.length) {
+        remainingPool = [...chartList];
+      }
+      const idx = Math.floor(Math.random() * remainingPool.length);
+      const [chosen] = remainingPool.splice(idx, 1);
+      return chosen;
+    }
+
+    function pickRandomChart() {
+      const filename = nextFilename();
+      refreshDeckStatus();
+
+      if (!filename) {
+        scoreBanner.className = "mono bad";
+        scoreBanner.textContent = "No chart entries in window.CHARTS. Populate ./charts.js and reload.";
+        draw();
+        return;
+      }
+
+      activeFileName.textContent = `File: ${filename}`;
+      guesses = { SN: null, IV: null, SW: null };
+      showKey = false;
+      toggleKeyBtn.textContent = "Show Answer Key";
+      scoreBanner.className = "mono muted";
+      scoreBanner.textContent = "Place SNR line, Invalidation line, and Swing point, then click Grade Attempt.";
+      parseFilenameKey(filename);
+
+      const img = new Image();
+      img.onload = () => {
+        currentImg = img;
+        const maxW = Math.min(920, canvas.parentElement.clientWidth - 24 || 900);
+        const scale = Math.min(1, maxW / img.width);
+        canvas.width = Math.max(300, Math.round(img.width * scale));
+        canvas.height = Math.max(180, Math.round(img.height * scale));
+        draw();
+      };
+      img.onerror = () => {
+        currentImg = null;
+        scoreBanner.className = "mono bad";
+        scoreBanner.textContent = `Failed to load ./charts/${filename}. Confirm the file exists in ./charts/.`;
+        draw();
+      };
+      img.src = `./charts/${encodeURIComponent(filename)}`;
+    }
+
+    function setGuessFromEvent(e) {
+      if (!currentImg) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+      hoverNorm = { x, y };
+
+      if (activeType === "SN" || activeType === "IV") {
+        guesses[activeType] = { y };
+      } else {
+        guesses.SW = { x, y };
+      }
+      updateStatusCards(null);
+      draw();
+    }
+
+    randomChartBtn.addEventListener("click", pickRandomChart);
+
+    noRepeatToggle.addEventListener("click", () => {
+      avoidRepeats = !avoidRepeats;
+      noRepeatToggle.textContent = `Avoid Repeats: ${avoidRepeats ? "ON" : "OFF"}`;
+      if (avoidRepeats && !remainingPool.length) {
+        remainingPool = [...chartList];
+      }
+      refreshDeckStatus();
+    });
+
+    document.querySelectorAll(".tool-btn[data-type]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        activeType = btn.dataset.type;
+        document.querySelectorAll(".tool-btn[data-type]").forEach(b => {
+          b.classList.toggle("active", b.dataset.type === activeType);
+        });
+        draw();
+      });
+    });
+
+    tolRange.addEventListener("input", () => {
+      tolLabel.textContent = `${Number(tolRange.value).toFixed(1)}%`;
+    });
+
+    toggleKeyBtn.addEventListener("click", () => {
+      showKey = !showKey;
+      toggleKeyBtn.textContent = showKey ? "Hide Answer Key" : "Show Answer Key";
+      draw();
+    });
+
+    clearGuessBtn.addEventListener("click", () => {
+      guesses = { SN: null, IV: null, SW: null };
+      scoreBanner.className = "mono muted";
+      scoreBanner.textContent = "Guesses cleared. Place SNR line, Invalidation line, and Swing point.";
+      updateStatusCards(null);
+      draw();
+    });
+
+    gradeBtn.addEventListener("click", () => {
+      if (!answerKey.SN || !answerKey.IV || !answerKey.SW) {
+        scoreBanner.className = "mono bad";
+        scoreBanner.textContent = "Load a chart with valid SN, IV, and SW filename coordinates first.";
+        return;
+      }
+      if (!guesses.SN || !guesses.IV || !guesses.SW) {
+        scoreBanner.className = "mono bad";
+        scoreBanner.textContent = "Place all 3 guesses (SNR line, Invalidation line, Swing point) first.";
+        return;
+      }
+
+      const tolNorm = Number(tolRange.value) / 100;
+      const snPass = Math.abs(guesses.SN.y - answerKey.SN.y) <= tolNorm;
+      const ivPass = Math.abs(guesses.IV.y - answerKey.IV.y) <= tolNorm;
+      const swDist = Math.hypot(guesses.SW.x - answerKey.SW.x, guesses.SW.y - answerKey.SW.y);
+      const swPass = swDist <= tolNorm;
+
+      const results = { SN: snPass, IV: ivPass, SW: swPass };
+      const score = [snPass, ivPass, swPass].filter(Boolean).length;
+
+      updateStatusCards(results);
+      showKey = true;
+      toggleKeyBtn.textContent = "Hide Answer Key";
+      draw();
+
+      scoreBanner.className = score === 3 ? "mono ok" : "mono";
+      scoreBanner.textContent = `Score: ${score} / 3 within ${Number(tolRange.value).toFixed(1)}% tolerance (SW distance: ${(swDist * 100).toFixed(1)}%).`;
+    });
+
+    canvas.addEventListener("pointermove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+      hoverNorm = { x: nx, y: ny };
+      hoverCoords.textContent = activeType === "SW"
+        ? `X: ${pad3(nx)} | Y: ${pad3(ny)}`
+        : `X: (line) | Y: ${pad3(ny)}`;
+      if (isPointerDown) {
+        setGuessFromEvent(e);
+      } else {
+        draw();
+      }
+    });
+
+    canvas.addEventListener("pointerleave", () => {
+      isPointerDown = false;
+      hoverNorm = null;
+      hoverCoords.textContent = "X: --- | Y: ---";
+      draw();
+    });
+
+    canvas.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || !currentImg) return;
+      isPointerDown = true;
+      setGuessFromEvent(e);
+    });
+
+    window.addEventListener("pointerup", () => {
+      isPointerDown = false;
+    });
+
+    refreshDeckStatus();
+    if (chartList.length) {
+      pickRandomChart();
+    } else {
+      draw();
+    }
+  </script>
+</body>
+</html>
